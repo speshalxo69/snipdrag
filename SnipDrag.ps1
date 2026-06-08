@@ -583,8 +583,8 @@ $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
 $form.ShowInTaskbar = $false
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.TopMost = $true
-$form.Width = 296
-$form.Height = 194
+$form.Width = 256
+$form.Height = 174
 $form.Padding = New-Object System.Windows.Forms.Padding -ArgumentList $script:ThumbnailPaddingLeft, $script:ThumbnailPaddingTop, $script:ThumbnailPaddingRight, $script:ThumbnailPaddingBottom
 $form.BackColor = $script:ThumbnailPalette.Surface
 $form.Opacity = $script:ThumbnailOpacity
@@ -687,10 +687,10 @@ function Resize-ThumbnailToImage {
         return
     }
 
-    $maxWidth = 280
-    $maxHeight = 190
-    $minWidth = 160
-    $minHeight = 90
+    $maxWidth = 240
+    $maxHeight = 160
+    $minWidth = 140
+    $minHeight = 78
     $aspect = [double]$Image.Width / [double]$Image.Height
 
     $width = $maxWidth
