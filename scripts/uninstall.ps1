@@ -10,7 +10,7 @@ Write-Host 'Uninstalling SnipDrag...'
 Get-CimInstance Win32_Process |
     Where-Object {
         $_.ProcessId -ne $PID -and
-        ($_.CommandLine -match 'SnipDrag\.ps1|snip-drag-thumb\.ps1')
+        ($_.CommandLine -match '(?i)-File\s+("?)[^"]*(SnipDrag|snip-drag-thumb)\.ps1\1')
     } |
     ForEach-Object {
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue

@@ -33,6 +33,8 @@ Add-Type -AssemblyName System.Runtime.WindowsRuntime
 Add-Type -ReferencedAssemblies 'System.Windows.Forms.dll','System.Drawing.dll' -TypeDefinition @"
 using System;
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
@@ -51,6 +53,7 @@ public class NoActivateForm : Form
             CreateParams cp = base.CreateParams;
             cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
             cp.ExStyle |= 0x00000080; // WS_EX_TOOLWINDOW
+            cp.ExStyle |= 0x00000008; // WS_EX_TOPMOST
             return cp;
         }
     }
@@ -130,6 +133,92 @@ public static class WindowTools
         }
 
         return SetForegroundWindow(found);
+    }
+}
+
+public class RoundedPanel : Panel
+{
+    public int CornerRadius { get; set; }
+    public Color FillColor { get; set; }
+    public Color BorderColor { get; set; }
+    public int BorderThickness { get; set; }
+
+    public RoundedPanel()
+    {
+        CornerRadius = 16;
+        FillColor = Color.FromArgb(31, 33, 36);
+        BorderColor = Color.FromArgb(62, 65, 70);
+        BorderThickness = 1;
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+        Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
+        using (GraphicsPath path = NativeWindowStyler.CreateRoundedRectanglePath(bounds, CornerRadius))
+        using (Pen border = new Pen(BorderColor, BorderThickness))
+        {
+            if (FillColor.ToArgb() != BackColor.ToArgb()) {
+                using (SolidBrush fill = new SolidBrush(FillColor))
+                {
+                    e.Graphics.FillPath(fill, path);
+                }
+            }
+            e.Graphics.DrawPath(border, path);
+        }
+    }
+}
+
+public static class NativeWindowStyler
+{
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    private const uint SWP_SHOWWINDOW = 0x0040;
+
+    public static GraphicsPath CreateRoundedRectanglePath(Rectangle bounds, int radius)
+    {
+        int diameter = Math.Max(1, radius * 2);
+        GraphicsPath path = new GraphicsPath();
+
+        path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
+        path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+
+        return path;
+    }
+
+    public static void ForceTopMost(Form form)
+    {
+        if (form == null || form.Handle == IntPtr.Zero) {
+            return;
+        }
+
+        SetWindowPos(form.Handle, HWND_TOPMOST, form.Left, form.Top, form.Width, form.Height, SWP_SHOWWINDOW);
+    }
+
+    public static void SetRoundedRegion(Control control, int radius)
+    {
+        if (control == null || control.Width <= 0 || control.Height <= 0) {
+            return;
+        }
+
+        Rectangle bounds = new Rectangle(0, 0, control.Width, control.Height);
+        using (GraphicsPath path = CreateRoundedRectanglePath(bounds, radius))
+        {
+            Region oldRegion = control.Region;
+            control.Region = new Region(path);
+            if (oldRegion != null) {
+                oldRegion.Dispose();
+            }
+        }
     }
 }
 
@@ -447,54 +536,110 @@ function Set-SnippingToolNotificationsEnabled {
     New-ItemProperty -Path $script:SnippingToolNotificationKey -Name 'Enabled' -Value $value -PropertyType DWord -Force | Out-Null
 }
 
+function Get-WindowsAppThemeIsLight {
+    try {
+        $personalize = Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -ErrorAction Stop
+        return ([int]$personalize.AppsUseLightTheme -ne 0)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-ThumbnailThemePalette {
+    if (Get-WindowsAppThemeIsLight) {
+        return @{
+            Surface = [System.Drawing.Color]::FromArgb(246, 246, 246)
+            PreviewFill = [System.Drawing.Color]::FromArgb(255, 255, 255)
+            PreviewBorder = [System.Drawing.Color]::FromArgb(210, 213, 218)
+            CloseForeground = [System.Drawing.Color]::FromArgb(38, 39, 41)
+            CloseHover = [System.Drawing.Color]::FromArgb(196, 43, 28)
+            ClosePressed = [System.Drawing.Color]::FromArgb(157, 30, 20)
+            CloseHoverForeground = [System.Drawing.Color]::White
+        }
+    }
+
+    return @{
+        Surface = [System.Drawing.Color]::FromArgb(32, 32, 32)
+        PreviewFill = [System.Drawing.Color]::FromArgb(18, 18, 18)
+        PreviewBorder = [System.Drawing.Color]::FromArgb(74, 77, 82)
+        CloseForeground = [System.Drawing.Color]::FromArgb(245, 245, 245)
+        CloseHover = [System.Drawing.Color]::FromArgb(196, 43, 28)
+        ClosePressed = [System.Drawing.Color]::FromArgb(157, 30, 20)
+        CloseHoverForeground = [System.Drawing.Color]::White
+    }
+}
+
+$script:ThumbnailPalette = Get-ThumbnailThemePalette
+$script:ThumbnailOpacity = 0.80
+
 $form = New-Object NoActivateForm
 $form.Text = 'SnipDrag'
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
 $form.ShowInTaskbar = $false
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.TopMost = $true
-$form.Width = 248
-$form.Height = 184
-$form.Padding = New-Object System.Windows.Forms.Padding -ArgumentList 8
-$form.BackColor = [System.Drawing.Color]::FromArgb(36, 38, 41)
+$form.Width = 252
+$form.Height = 180
+$form.Padding = New-Object System.Windows.Forms.Padding -ArgumentList 0
+$form.BackColor = $script:ThumbnailPalette.Surface
+$form.Opacity = $script:ThumbnailOpacity
 
 $titleBar = New-Object System.Windows.Forms.Panel
 $titleBar.Dock = [System.Windows.Forms.DockStyle]::Top
-$titleBar.Height = 28
-$titleBar.BackColor = [System.Drawing.Color]::FromArgb(36, 38, 41)
+$titleBar.Height = 32
+$titleBar.BackColor = $script:ThumbnailPalette.Surface
 
 $title = New-Object System.Windows.Forms.Label
 $title.Text = ''
 $title.AutoSize = $false
 $title.Dock = [System.Windows.Forms.DockStyle]::Fill
-$title.ForeColor = [System.Drawing.Color]::White
+$title.ForeColor = $script:ThumbnailPalette.CloseForeground
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Regular)
 $title.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+$title.BackColor = $script:ThumbnailPalette.Surface
 
 $hideButton = New-Object System.Windows.Forms.Button
-$hideButton.Text = 'x'
-$hideButton.Width = 28
-$hideButton.Height = 24
+$hideButton.Text = [string][char]0xE8BB
+$hideButton.Width = 46
+$hideButton.Height = 32
 $hideButton.Dock = [System.Windows.Forms.DockStyle]::Right
 $hideButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $hideButton.FlatAppearance.BorderSize = 0
-$hideButton.BackColor = [System.Drawing.Color]::FromArgb(36, 38, 41)
-$hideButton.ForeColor = [System.Drawing.Color]::White
+$hideButton.FlatAppearance.MouseOverBackColor = $script:ThumbnailPalette.CloseHover
+$hideButton.FlatAppearance.MouseDownBackColor = $script:ThumbnailPalette.ClosePressed
+$hideButton.BackColor = $script:ThumbnailPalette.Surface
+$hideButton.ForeColor = $script:ThumbnailPalette.CloseForeground
+$hideButton.Font = New-Object System.Drawing.Font('Segoe MDL2 Assets', 8, [System.Drawing.FontStyle]::Regular)
 $hideButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+$hideButton.UseVisualStyleBackColor = $false
+
+$previewFrame = New-Object RoundedPanel
+$previewFrame.Dock = [System.Windows.Forms.DockStyle]::Fill
+$previewFrame.Padding = New-Object System.Windows.Forms.Padding -ArgumentList 1
+$previewFrame.Margin = New-Object System.Windows.Forms.Padding -ArgumentList 0
+$previewFrame.CornerRadius = 8
+$previewFrame.FillColor = $script:ThumbnailPalette.PreviewFill
+$previewFrame.BorderColor = $script:ThumbnailPalette.PreviewBorder
+$previewFrame.BorderThickness = 1
+$previewFrame.BackColor = $script:ThumbnailPalette.Surface
+$previewFrame.Cursor = [System.Windows.Forms.Cursors]::SizeAll
 
 $picture = New-Object System.Windows.Forms.PictureBox
 $picture.Dock = [System.Windows.Forms.DockStyle]::Fill
 $picture.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
-$picture.BackColor = [System.Drawing.Color]::FromArgb(17, 18, 20)
+$picture.BackColor = $script:ThumbnailPalette.PreviewFill
 $picture.Cursor = [System.Windows.Forms.Cursors]::SizeAll
 
 $titleBar.Controls.Add($title)
 $titleBar.Controls.Add($hideButton)
-$form.Controls.Add($picture)
+$previewFrame.Controls.Add($picture)
+$form.Controls.Add($previewFrame)
 $form.Controls.Add($titleBar)
 
 $toolTip = New-Object System.Windows.Forms.ToolTip
 $toolTip.SetToolTip($picture, 'Click to open in Snipping Tool, or drag into any app that accepts images or files.')
+$toolTip.SetToolTip($previewFrame, 'Click to open in Snipping Tool, or drag into any app that accepts images or files.')
 $toolTip.SetToolTip($hideButton, 'Hide thumbnail')
 
 $hideTimer = New-Object System.Windows.Forms.Timer
@@ -502,6 +647,46 @@ $hideTimer.Interval = [Math]::Max(3, $HideAfterSeconds) * 1000
 $hideTimer.Add_Tick({
     $hideTimer.Stop()
     Hide-Thumbnail -DeleteTemporaryFile $true
+})
+
+function Apply-ThumbnailTheme {
+    $script:ThumbnailPalette = Get-ThumbnailThemePalette
+
+    $form.BackColor = $script:ThumbnailPalette.Surface
+    $form.Opacity = $script:ThumbnailOpacity
+    $titleBar.BackColor = $script:ThumbnailPalette.Surface
+    $title.BackColor = $script:ThumbnailPalette.Surface
+    $title.ForeColor = $script:ThumbnailPalette.CloseForeground
+
+    $hideButton.BackColor = $script:ThumbnailPalette.Surface
+    $hideButton.ForeColor = $script:ThumbnailPalette.CloseForeground
+    $hideButton.FlatAppearance.MouseOverBackColor = $script:ThumbnailPalette.CloseHover
+    $hideButton.FlatAppearance.MouseDownBackColor = $script:ThumbnailPalette.ClosePressed
+
+    $previewFrame.BackColor = $script:ThumbnailPalette.Surface
+    $previewFrame.FillColor = $script:ThumbnailPalette.PreviewFill
+    $previewFrame.BorderColor = $script:ThumbnailPalette.PreviewBorder
+    $picture.BackColor = $script:ThumbnailPalette.PreviewFill
+
+    return $script:ThumbnailPalette
+}
+
+function Update-ThumbnailChrome {
+    [void](Apply-ThumbnailTheme)
+    [NativeWindowStyler]::ForceTopMost($form)
+    [NativeWindowStyler]::SetRoundedRegion($previewFrame, 8)
+    $previewFrame.Invalidate()
+}
+
+$form.Add_HandleCreated({
+    Update-ThumbnailChrome
+})
+$form.Add_Resize({
+    Update-ThumbnailChrome
+})
+$previewFrame.Add_Resize({
+    [NativeWindowStyler]::SetRoundedRegion($previewFrame, 8)
+    $previewFrame.Invalidate()
 })
 
 function Move-ThumbnailToCorner {
@@ -540,7 +725,9 @@ function Show-Thumbnail {
     $script:CurrentFileIsTemporary = $IsTemporary
     Set-ThumbnailImage -Path $Path
     Move-ThumbnailToCorner
+    Update-ThumbnailChrome
     $form.Show()
+    Update-ThumbnailChrome
     $form.BringToFront()
     $hideTimer.Stop()
     $hideTimer.Start()
@@ -711,9 +898,26 @@ $pointerUpHandler = {
 $picture.Add_MouseDown($pointerDownHandler)
 $picture.Add_MouseMove($pointerMoveHandler)
 $picture.Add_MouseUp($pointerUpHandler)
-$title.Add_MouseDown($pointerDownHandler)
-$title.Add_MouseMove($pointerMoveHandler)
-$title.Add_MouseUp($pointerUpHandler)
+$previewFrame.Add_MouseDown($pointerDownHandler)
+$previewFrame.Add_MouseMove($pointerMoveHandler)
+$previewFrame.Add_MouseUp($pointerUpHandler)
+$hideButton.Add_MouseEnter({
+    $hideButton.ForeColor = $script:ThumbnailPalette.CloseHoverForeground
+})
+$hideButton.Add_MouseLeave({
+    $hideButton.BackColor = $script:ThumbnailPalette.Surface
+    $hideButton.ForeColor = $script:ThumbnailPalette.CloseForeground
+})
+$hideButton.Add_MouseUp({
+    param($sender, $eventArgs)
+    if ($hideButton.ClientRectangle.Contains($eventArgs.Location)) {
+        $hideButton.ForeColor = $script:ThumbnailPalette.CloseHoverForeground
+    }
+    else {
+        $hideButton.BackColor = $script:ThumbnailPalette.Surface
+        $hideButton.ForeColor = $script:ThumbnailPalette.CloseForeground
+    }
+})
 $hideButton.Add_Click({ Hide-Thumbnail -DeleteTemporaryFile $true })
 $form.Add_FormClosed({
     if ($picture.Image -ne $null) {
@@ -780,37 +984,44 @@ $tray.Add_DoubleClick({
 $pollTimer = New-Object System.Windows.Forms.Timer
 $pollTimer.Interval = 450
 $pollTimer.Add_Tick({
-    $sequence = [ClipboardNative]::GetClipboardSequenceNumber()
-    if ($sequence -eq $script:LastSequence) {
-        return
+    try {
+        $sequence = [ClipboardNative]::GetClipboardSequenceNumber()
+        if ($sequence -eq $script:LastSequence) {
+            return
+        }
+
+        $script:LastSequence = $sequence
+        $clipboardEventTime = Get-Date
+        $bytes = Wait-ClipboardPngBytes
+        if ($null -eq $bytes -or $bytes.Length -eq 0) {
+            return
+        }
+
+        $hash = Get-Sha256Hex -Bytes $bytes
+        if ($hash -eq $script:LastHash) {
+            return
+        }
+
+        $script:LastHash = $hash
+        $path = Find-MatchingSnippingToolFile -NormalizedHash $hash -Since $clipboardEventTime
+        $isTemporary = $false
+
+        if ([string]::IsNullOrWhiteSpace($path)) {
+            $isTemporary = $true
+            $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+            $path = Join-Path $OutputDir ("snip-{0}-{1}.png" -f $stamp, $hash.Substring(0, 8))
+            [System.IO.File]::WriteAllBytes($path, $bytes)
+            Queue-BridgeFileDelete -Path $path -DelaySeconds $BridgeFileLifetimeSeconds
+            Remove-OldBridgeFiles
+        }
+
+        Show-Thumbnail -Path $path -IsTemporary $isTemporary
     }
-
-    $script:LastSequence = $sequence
-    $clipboardEventTime = Get-Date
-    $bytes = Wait-ClipboardPngBytes
-    if ($null -eq $bytes -or $bytes.Length -eq 0) {
-        return
+    catch {
+        $logPath = Join-Path $OutputDir 'snipdrag-errors.log'
+        $message = "[{0}] {1}`r`n{2}`r`n" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $_.Exception.Message, $_.ScriptStackTrace
+        Add-Content -LiteralPath $logPath -Value $message -ErrorAction SilentlyContinue
     }
-
-    $hash = Get-Sha256Hex -Bytes $bytes
-    if ($hash -eq $script:LastHash) {
-        return
-    }
-
-    $script:LastHash = $hash
-    $path = Find-MatchingSnippingToolFile -NormalizedHash $hash -Since $clipboardEventTime
-    $isTemporary = $false
-
-    if ([string]::IsNullOrWhiteSpace($path)) {
-        $isTemporary = $true
-        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-        $path = Join-Path $OutputDir ("snip-{0}-{1}.png" -f $stamp, $hash.Substring(0, 8))
-        [System.IO.File]::WriteAllBytes($path, $bytes)
-        Queue-BridgeFileDelete -Path $path -DelaySeconds $BridgeFileLifetimeSeconds
-        Remove-OldBridgeFiles
-    }
-
-    Show-Thumbnail -Path $path -IsTemporary $isTemporary
 })
 
 $pollTimer.Start()
