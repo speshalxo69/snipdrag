@@ -572,6 +572,10 @@ function Get-ThumbnailThemePalette {
 
 $script:ThumbnailPalette = Get-ThumbnailThemePalette
 $script:ThumbnailOpacity = 0.80
+$script:ThumbnailPaddingLeft = 8
+$script:ThumbnailPaddingTop = 28
+$script:ThumbnailPaddingRight = 8
+$script:ThumbnailPaddingBottom = 8
 
 $form = New-Object NoActivateForm
 $form.Text = 'SnipDrag'
@@ -579,9 +583,9 @@ $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
 $form.ShowInTaskbar = $false
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.TopMost = $true
-$form.Width = 252
-$form.Height = 142
-$form.Padding = New-Object System.Windows.Forms.Padding -ArgumentList 0
+$form.Width = 296
+$form.Height = 194
+$form.Padding = New-Object System.Windows.Forms.Padding -ArgumentList $script:ThumbnailPaddingLeft, $script:ThumbnailPaddingTop, $script:ThumbnailPaddingRight, $script:ThumbnailPaddingBottom
 $form.BackColor = $script:ThumbnailPalette.Surface
 $form.Opacity = $script:ThumbnailOpacity
 
@@ -589,7 +593,7 @@ $hideButton = New-Object System.Windows.Forms.Button
 $hideButton.Text = [string][char]0xE8BB
 $hideButton.Width = 46
 $hideButton.Height = 32
-$hideButton.Location = New-Object System.Drawing.Point(206, 0)
+$hideButton.Location = New-Object System.Drawing.Point(($form.ClientSize.Width - $hideButton.Width), 0)
 $hideButton.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
 $hideButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $hideButton.FlatAppearance.BorderSize = 0
@@ -640,6 +644,7 @@ function Apply-ThumbnailTheme {
 
     $form.BackColor = $script:ThumbnailPalette.Surface
     $form.Opacity = $script:ThumbnailOpacity
+    $form.Padding = New-Object System.Windows.Forms.Padding -ArgumentList $script:ThumbnailPaddingLeft, $script:ThumbnailPaddingTop, $script:ThumbnailPaddingRight, $script:ThumbnailPaddingBottom
 
     $hideButton.BackColor = $script:ThumbnailPalette.Surface
     $hideButton.ForeColor = $script:ThumbnailPalette.CloseForeground
@@ -699,7 +704,10 @@ function Resize-ThumbnailToImage {
     $width = [Math]::Max($minWidth, $width)
     $height = [Math]::Max($minHeight, $height)
 
-    $form.ClientSize = New-Object System.Drawing.Size($width, $height)
+    $clientWidth = $width + $script:ThumbnailPaddingLeft + $script:ThumbnailPaddingRight
+    $clientHeight = $height + $script:ThumbnailPaddingTop + $script:ThumbnailPaddingBottom
+
+    $form.ClientSize = New-Object System.Drawing.Size($clientWidth, $clientHeight)
     $hideButton.Location = New-Object System.Drawing.Point(($form.ClientSize.Width - $hideButton.Width), 0)
 }
 
