@@ -8,11 +8,15 @@ Windows Snipping Tool is already excellent: `Win+Shift+S` captures quickly, copi
 
 SnipDrag keeps Windows Snipping Tool as the capture engine. It watches the clipboard for new screenshot images, shows a small thumbnail at the bottom-right for about five seconds, and turns that thumbnail into a real drag-and-drop image payload.
 
+![SnipDrag drag to chat or upload](docs/drag-to-chat-upload.png)
+
+![SnipDrag workflow](docs/workflow.png)
+
 ## What It Does
 
 - Press `Win+Shift+S` exactly like usual.
 - A tiny SnipDrag thumbnail appears at the bottom-right.
-- Drag the thumbnail into apps that accept dropped images or files.
+- Drag the thumbnail into chat boxes, upload fields, links, GitHub comments, email composers, and apps that accept dropped images or files.
 - Click the thumbnail to open the capture in Snipping Tool for drawing, markup, crop, or save.
 - If Snipping Tool already autosaved the screenshot, SnipDrag reuses that original file.
 - If no autosaved file exists, SnipDrag creates a temporary bridge PNG and cleans it up automatically.
