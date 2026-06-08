@@ -580,30 +580,17 @@ $form.ShowInTaskbar = $false
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
 $form.TopMost = $true
 $form.Width = 252
-$form.Height = 180
+$form.Height = 142
 $form.Padding = New-Object System.Windows.Forms.Padding -ArgumentList 0
 $form.BackColor = $script:ThumbnailPalette.Surface
 $form.Opacity = $script:ThumbnailOpacity
-
-$titleBar = New-Object System.Windows.Forms.Panel
-$titleBar.Dock = [System.Windows.Forms.DockStyle]::Top
-$titleBar.Height = 32
-$titleBar.BackColor = $script:ThumbnailPalette.Surface
-
-$title = New-Object System.Windows.Forms.Label
-$title.Text = ''
-$title.AutoSize = $false
-$title.Dock = [System.Windows.Forms.DockStyle]::Fill
-$title.ForeColor = $script:ThumbnailPalette.CloseForeground
-$title.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Regular)
-$title.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-$title.BackColor = $script:ThumbnailPalette.Surface
 
 $hideButton = New-Object System.Windows.Forms.Button
 $hideButton.Text = [string][char]0xE8BB
 $hideButton.Width = 46
 $hideButton.Height = 32
-$hideButton.Dock = [System.Windows.Forms.DockStyle]::Right
+$hideButton.Location = New-Object System.Drawing.Point(206, 0)
+$hideButton.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
 $hideButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
 $hideButton.FlatAppearance.BorderSize = 0
 $hideButton.FlatAppearance.MouseOverBackColor = $script:ThumbnailPalette.CloseHover
@@ -631,11 +618,10 @@ $picture.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
 $picture.BackColor = $script:ThumbnailPalette.PreviewFill
 $picture.Cursor = [System.Windows.Forms.Cursors]::SizeAll
 
-$titleBar.Controls.Add($title)
-$titleBar.Controls.Add($hideButton)
 $previewFrame.Controls.Add($picture)
 $form.Controls.Add($previewFrame)
-$form.Controls.Add($titleBar)
+$form.Controls.Add($hideButton)
+$hideButton.BringToFront()
 
 $toolTip = New-Object System.Windows.Forms.ToolTip
 $toolTip.SetToolTip($picture, 'Click to open in Snipping Tool, or drag into any app that accepts images or files.')
@@ -654,9 +640,6 @@ function Apply-ThumbnailTheme {
 
     $form.BackColor = $script:ThumbnailPalette.Surface
     $form.Opacity = $script:ThumbnailOpacity
-    $titleBar.BackColor = $script:ThumbnailPalette.Surface
-    $title.BackColor = $script:ThumbnailPalette.Surface
-    $title.ForeColor = $script:ThumbnailPalette.CloseForeground
 
     $hideButton.BackColor = $script:ThumbnailPalette.Surface
     $hideButton.ForeColor = $script:ThumbnailPalette.CloseForeground
@@ -674,7 +657,10 @@ function Apply-ThumbnailTheme {
 function Update-ThumbnailChrome {
     [void](Apply-ThumbnailTheme)
     [NativeWindowStyler]::ForceTopMost($form)
+    [NativeWindowStyler]::SetRoundedRegion($form, 8)
     [NativeWindowStyler]::SetRoundedRegion($previewFrame, 8)
+    $hideButton.Location = New-Object System.Drawing.Point(($form.ClientSize.Width - $hideButton.Width), 0)
+    $hideButton.BringToFront()
     $previewFrame.Invalidate()
 }
 
@@ -688,6 +674,34 @@ $previewFrame.Add_Resize({
     [NativeWindowStyler]::SetRoundedRegion($previewFrame, 8)
     $previewFrame.Invalidate()
 })
+
+function Resize-ThumbnailToImage {
+    param([System.Drawing.Image]$Image)
+
+    if ($null -eq $Image -or $Image.Width -le 0 -or $Image.Height -le 0) {
+        return
+    }
+
+    $maxWidth = 280
+    $maxHeight = 190
+    $minWidth = 160
+    $minHeight = 90
+    $aspect = [double]$Image.Width / [double]$Image.Height
+
+    $width = $maxWidth
+    $height = [int][Math]::Round($width / $aspect)
+
+    if ($height -gt $maxHeight) {
+        $height = $maxHeight
+        $width = [int][Math]::Round($height * $aspect)
+    }
+
+    $width = [Math]::Max($minWidth, $width)
+    $height = [Math]::Max($minHeight, $height)
+
+    $form.ClientSize = New-Object System.Drawing.Size($width, $height)
+    $hideButton.Location = New-Object System.Drawing.Point(($form.ClientSize.Width - $hideButton.Width), 0)
+}
 
 function Move-ThumbnailToCorner {
     $screen = [System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position)
@@ -708,7 +722,9 @@ function Set-ThumbnailImage {
 
     $loaded = [System.Drawing.Image]::FromFile($Path)
     try {
-        $picture.Image = New-Object System.Drawing.Bitmap $loaded
+        $bitmap = New-Object System.Drawing.Bitmap $loaded
+        Resize-ThumbnailToImage -Image $bitmap
+        $picture.Image = $bitmap
     }
     finally {
         $loaded.Dispose()
